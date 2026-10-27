@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lossless Join Checker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#eef1f5; --surface:#ffffff; --surface-2:#f6f8fa;
+  --ink:#151f2a; --ink-soft:#54636f; --line:#d3dbe3; --line-strong:#b3bfcb;
+  --a-fg:#0b5f57; --a-bg:#d6efe9; --a-line:#79c3b6;
+  --b-fg:#8a4b06; --b-bg:#fbeedb; --b-line:#e0b276;
+  --focus:#3a4fd8; --focus-bg:#e6e9ff;
+  --good:#0f6b4f; --bad:#a62a2a; --good-bg:#daf1e6; --bad-bg:#fbe3e3;
+  --shadow:0 1px 0 var(--line);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0e151c; --surface:#151f28; --surface-2:#1b2731;
+    --ink:#e6edf3; --ink-soft:#9aabb8; --line:#2b3945; --line-strong:#3d4e5c;
+    --a-fg:#7fe3d0; --a-bg:#12332f; --a-line:#2f6a60;
+    --b-fg:#f3c07a; --b-bg:#3a2b16; --b-line:#7a5a2c;
+    --focus:#8b9bff; --focus-bg:#222a52;
+    --good:#67dba9; --bad:#ff8f8f; --good-bg:#12331f; --bad-bg:#3a1c1c;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0e151c; --surface:#151f28; --surface-2:#1b2731;
+  --ink:#e6edf3; --ink-soft:#9aabb8; --line:#2b3945; --line-strong:#3d4e5c;
+  --a-fg:#7fe3d0; --a-bg:#12332f; --a-line:#2f6a60;
+  --b-fg:#f3c07a; --b-bg:#3a2b16; --b-line:#7a5a2c;
+  --focus:#8b9bff; --focus-bg:#222a52;
+  --good:#67dba9; --bad:#ff8f8f; --good-bg:#12331f; --bad-bg:#3a1c1c;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  font-size:15px; line-height:1.55;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:34px 34px; background-position:-1px -1px;
+}
+@media (prefers-color-scheme: dark){body{background-image:none}}
+:root[data-theme="dark"] body{background-image:none}
+
+h1,h2,h3{font-family:"Bricolage Grotesque","IBM Plex Sans",sans-serif;font-weight:700;letter-spacing:-.015em;margin:0}
+code,kbd,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
+
+/* ---------- shell ---------- */
+header.top{
+  position:sticky; top:0; z-index:20;
+  display:flex; gap:16px; align-items:center; flex-wrap:wrap;
+  padding:12px 20px; background:var(--surface); border-bottom:1px solid var(--line-strong);
+}
+.brand{display:flex;align-items:baseline;gap:12px;margin-right:auto}
+.brand h1{font-size:19px}
+.brand .sub{color:var(--ink-soft);font-size:13px}
+.top .spacer{flex:1}
+
+.btn{
+  background:var(--surface-2); border:1px solid var(--line-strong); color:var(--ink);
+  padding:7px 13px; border-radius:7px; cursor:pointer; font-weight:500;
+}
+.btn:hover{border-color:var(--focus)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.btn.primary:hover{opacity:.9}
+.btn.tiny{padding:4px 9px;font-size:13px;border-radius:6px}
+select,input[type=text],textarea{
+  background:var(--surface); border:1px solid var(--line-strong); border-radius:7px; padding:8px 10px; width:100%;
+}
+textarea{font-family:"IBM Plex Mono",monospace;font-size:13.5px;resize:vertical;line-height:1.7}
+
+.layout{display:grid;grid-template-columns:320px minmax(0,1fr) 340px;gap:0;align-items:stretch;min-height:calc(100vh - 57px)}
+.panel{background:var(--surface);border-right:1px solid var(--line-strong);padding:18px}
+.panel:last-child{border-right:none;border-left:1px solid var(--line-strong)}
+.stage{background:var(--surface-2);padding:18px 20px;min-width:0}
+@media (max-width:1100px){
+  .layout{grid-template-columns:1fr}
+  .panel{border-right:none;border-bottom:1px solid var(--line-strong)}
+  .panel:last-child{border-left:none;border-top:1px solid var(--line-strong)}
+}
+
+.field{margin-bottom:14px}
+.field label{display:block;font-weight:600;font-size:13.5px;margin-bottom:5px}
+.field .hint{color:var(--ink-soft);font-size:12.5px;margin-bottom:6px}
+.sec-title{font-size:12.5px;font-weight:600;color:var(--ink-soft);margin:22px 0 8px;display:flex;align-items:center;gap:8px}
+.sec-title::after{content:"";height:1px;flex:1;background:var(--line)}
+
+/* ---------- tableau ---------- */
+.verdict{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  border:1px solid var(--line-strong);border-left-width:5px;border-radius:9px;padding:12px 14px;background:var(--surface);margin-bottom:16px;
+}
+.verdict.good{border-left-color:var(--good);background:var(--good-bg)}
+.verdict.bad{border-left-color:var(--bad);background:var(--bad-bg)}
+.verdict.idle{border-left-color:var(--line-strong)}
+.verdict strong{font-family:"Bricolage Grotesque",sans-serif;font-size:17px}
+.verdict .why{color:var(--ink-soft);font-size:13.5px}
+
+.tab-wrap{overflow-x:auto;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface)}
+table.tableau{border-collapse:collapse;width:100%;font-family:"IBM Plex Mono",monospace;font-size:14px}
+table.tableau th,table.tableau td{border:1px solid var(--line);padding:9px 10px;text-align:center;white-space:nowrap}
+table.tableau thead th{background:var(--surface-2);font-weight:600;position:sticky;top:0}
+table.tableau th.rowhead{background:var(--surface-2);text-align:left;font-weight:600}
+.cell-a{background:var(--a-bg);color:var(--a-fg);font-weight:600}
+.cell-b{background:var(--b-bg);color:var(--b-fg)}
+.cell-changed{box-shadow:inset 0 0 0 3px var(--focus),0 0 0 1px var(--focus);animation:pop .45s ease;position:relative;z-index:1}
+.cell-lhs{outline:3px dashed var(--focus);outline-offset:-4px;position:relative;z-index:1}
+@keyframes pop{0%{transform:scale(.88)}60%{transform:scale(1.06)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.cell-changed{animation:none}}
+tr.row-win th,tr.row-win td{border-color:var(--good)}
+tr.row-win th.rowhead{color:var(--good)}
+sub{font-size:.72em}
+
+.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:14px 0}
+.progress{height:6px;background:var(--line);border-radius:99px;overflow:hidden;flex:1;min-width:120px}
+.progress i{display:block;height:100%;background:var(--focus);width:0}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-soft);margin-top:10px}
+.legend span{display:flex;align-items:center;gap:6px}
+.swatch{width:14px;height:14px;border-radius:4px;border:1px solid var(--line-strong);display:inline-block}
+
+/* ---------- explanation ---------- */
+.step-card{border:1px solid var(--line-strong);border-radius:9px;padding:12px 13px;background:var(--surface-2);margin-bottom:12px}
+.step-card .k{font-size:12px;color:var(--ink-soft);margin-bottom:4px}
+.log{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:9px}
+.log button{display:block;width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--line);padding:8px 11px;cursor:pointer;font-size:13.3px}
+.log button:last-child{border-bottom:none}
+.log button:hover{background:var(--surface-2)}
+.log button[aria-current="true"]{background:var(--focus-bg);font-weight:600}
+
+.msgs{margin:0 0 12px;padding:0;list-style:none}
+.msgs li{border-radius:7px;padding:8px 11px;font-size:13.3px;margin-bottom:6px;border:1px solid var(--line-strong)}
+.msgs li.err{background:var(--bad-bg);border-color:var(--bad)}
+.msgs li.warn{background:var(--b-bg);border-color:var(--b-line)}
+.msgs li.ok{background:var(--good-bg);border-color:var(--a-line)}
+
+.pillrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.pill{border:1px solid var(--line-strong);border-radius:99px;padding:3px 10px;font-size:12.5px;background:var(--surface-2)}
+
+details.theory{background:var(--surface);border-top:1px solid var(--line-strong);padding:22px 20px}
+details.theory summary{cursor:pointer;font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:18px}
+.theory-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:22px;margin-top:16px;max-width:1200px}
+.theory-grid h3{font-size:15px;margin-bottom:6px}
+.theory-grid p,.theory-grid li{font-size:14px;color:var(--ink-soft)}
+.theory-grid ul{padding-left:18px;margin:6px 0}
+
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line-strong);margin-bottom:14px}
+.tabs button{background:none;border:none;border-bottom:2px solid transparent;padding:8px 12px;cursor:pointer;color:var(--ink-soft);font-weight:500}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--focus)}
+.hidden{display:none !important}
+.aibox{white-space:pre-wrap;font-size:13.5px;border:1px solid var(--line);border-radius:9px;padding:11px;background:var(--surface-2);max-height:260px;overflow:auto}
+.smallnote{font-size:12.3px;color:var(--ink-soft)}
+.hist button{display:block;width:100%;text-align:left;background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:7px 10px;margin-bottom:6px;cursor:pointer;font-size:13px}
+.hist button:hover{border-color:var(--focus)}
+.kv{display:flex;justify-content:space-between;gap:10px;font-size:13.3px;padding:5px 0;border-bottom:1px dashed var(--line)}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <h1>Lossless Join Checker</h1>
+    <span class="sub">Chase algorithm · relational decomposition</span>
+  </div>
+  <label for="exSel" class="smallnote">Example</label>
+  <select id="exSel" style="width:auto;min-width:230px"></select>
+  <button class="btn" id="themeBtn" aria-pressed="false">Dark mode</button>
+</header>
+
+<div class="layout">
+
+  <!-- ============ LEFT: INPUT ============ -->
+  <section class="panel" aria-label="Input">
+    <div class="field">
+      <label for="attrs">Relation R — attributes</label>
+      <div class="hint">Comma or space separated. Names may be multi-character.</div>
+      <input type="text" id="attrs" value="A, B, C, D, E" autocomplete="off">
+    </div>
+
+    <div class="field">
+      <label for="fds">Functional dependencies</label>
+      <div class="hint">One per line, e.g. <code>A -&gt; C</code> or <code>DE -&gt; C</code></div>
+      <textarea id="fds" rows="6">A -> C
+B -> C
+C -> D
+DE -> C
+CE -> A</textarea>
+    </div>
+
+    <div class="field">
+      <label for="subs">Decomposition</label>
+      <div class="hint">One sub-relation per line, e.g. <code>R1: A, D</code></div>
+      <textarea id="subs" rows="6">R1: A, D
+R2: A, B
+R3: B, E
+R4: C, D, E
+R5: A, E</textarea>
+    </div>
+
+    <div style="display:flex;gap:8px">
+      <button class="btn primary" id="runBtn" style="flex:1">Check decomposition</button>
+      <button class="btn" id="clearBtn">Clear</button>
+    </div>
+
+    <div class="sec-title">Recent checks</div>
+    <div class="hist" id="hist"><p class="smallnote">Runs you make are listed here so you can reload them.</p></div>
+  </section>
+
+  <!-- ============ CENTER: VISUALIZATION ============ -->
+  <section class="stage" aria-label="Visualization">
+    <div class="verdict idle" id="verdict">
+      <strong>Ready</strong>
+      <span class="why">Enter a schema and press “Check decomposition”, or pick an example above.</span>
+    </div>
+
+    <ul class="msgs" id="msgs"></ul>
+
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="chase">Chase tableau</button>
+      <button role="tab" aria-selected="false" data-tab="binary">Binary rule &amp; closures</button>
+      <button role="tab" aria-selected="false" data-tab="dep">Dependency preservation</button>
+    </div>
+
+    <div id="tab-chase">
+      <div class="tab-wrap"><div id="tableau"></div></div>
+      <div class="controls">
+        <button class="btn tiny" id="firstBtn" title="First step">⏮</button>
+        <button class="btn tiny" id="prevBtn" title="Previous step">◀</button>
+        <button class="btn tiny primary" id="playBtn">▶ Play</button>
+        <button class="btn tiny" id="nextBtn" title="Next step">▶</button>
+        <button class="btn tiny" id="lastBtn" title="Last step">⏭</button>
+        <span class="progress" aria-hidden="true"><i id="progFill"></i></span>
+        <span class="smallnote mono" id="stepCount">0 / 0</span>
+        <label class="smallnote" for="speed">Speed</label>
+        <select id="speed" style="width:auto"><option value="1600">Slow</option><option value="900" selected>Normal</option><option value="350">Fast</option></select>
+      </div>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--a-bg);border-color:var(--a-line)"></i> a<sub>j</sub> — value shared with the original row</span>
+        <span><i class="swatch" style="background:var(--b-bg);border-color:var(--b-line)"></i> b<sub>ij</sub> — unknown / row-specific value</span>
+        <span><i class="swatch" style="background:var(--focus-bg);border-color:var(--focus)"></i> changed by the current step</span>
+      </div>
+    </div>
+
+    <div id="tab-binary" class="hidden">
+      <div id="binaryOut"></div>
+    </div>
+
+    <div id="tab-dep" class="hidden">
+      <div id="depOut"></div>
+    </div>
+  </section>
+
+  <!-- ============ RIGHT: EXPLANATION ============ -->
+  <section class="panel" aria-label="Explanation">
+    <div class="sec-title" style="margin-top:0">What just happened</div>
+    <div class="step-card" id="stepCard" aria-live="polite">
+      <div class="k">Step —</div>
+      <div>Run a check to see the chase explained one step at a time.</div>
+    </div>
+
+    <div class="log" id="log"></div>
+
+    <div class="sec-title">Report</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn tiny" id="exportBtn" style="flex:1">Download report</button>
+      <button class="btn tiny" id="copyBtn">Copy</button>
+    </div>
+    <p class="smallnote" id="exportNote" style="margin:6px 0 0">Markdown report with inputs, every chase step, and the verdict.</p>
+
+    <div id="aiWrap" class="hidden">
+      <div class="sec-title">AI tutor</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="btn tiny" id="aiExplain" style="flex:1">Explain this result</button>
+        <button class="btn tiny" id="aiStop" disabled>Stop</button>
+      </div>
+      <input type="text" id="aiAsk" placeholder="Ask a follow-up, then press Enter" autocomplete="off">
+      <div class="aibox hidden" id="aiOut" aria-live="polite"></div>
+    </div>
+  </section>
+</div>
+
+<details class="theory">
+  <summary>Theory, algorithm and limitations</summary>
+  <div class="theory-grid">
+    <div>
+      <h3>What lossless join means</h3>
+      <p>A decomposition of R into R₁…R<sub>k</sub> is <em>lossless</em> (non-additive) if for every legal instance r of R:</p>
+      <p class="mono" style="color:var(--ink)">π<sub>R₁</sub>(r) ⋈ … ⋈ π<sub>R<sub>k</sub></sub>(r) = r</p>
+      <p>The join must return exactly the original rows. A lossy decomposition returns <em>extra</em> spurious tuples, so information about which values belonged together is destroyed.</p>
+    </div>
+    <div>
+      <h3>The chase test</h3>
+      <p>Build a tableau with one row per sub-relation and one column per attribute. Cell (i,j) is a<sub>j</sub> when attribute A<sub>j</sub> is in R<sub>i</sub>, else b<sub>ij</sub>.</p>
+      <ul>
+        <li>For each FD X→Y, take rows that agree on all of X.</li>
+        <li>Equate their Y values: if any is a<sub>j</sub>, all become a<sub>j</sub>; otherwise all take the same b symbol.</li>
+        <li>Repeat until nothing changes.</li>
+      </ul>
+      <p>If any row becomes all a-symbols, the decomposition is lossless; otherwise it is lossy.</p>
+    </div>
+    <div>
+      <h3>Binary shortcut</h3>
+      <p>For exactly two fragments, the decomposition is lossless iff the common attributes form a superkey of at least one side:</p>
+      <p class="mono" style="color:var(--ink)">(R₁ ∩ R₂) → R₁ &nbsp;or&nbsp; (R₁ ∩ R₂) → R₂</p>
+      <p>Checked with attribute closure. An empty intersection always means lossy (the join degenerates to a Cartesian product).</p>
+    </div>
+    <div>
+      <h3>Complexity</h3>
+      <ul>
+        <li>Tableau: k × n cells for k fragments, n attributes.</li>
+        <li>One chase pass costs O(|F| · k · n); each pass that changes anything removes at least one distinct symbol, and there are at most k·n symbols.</li>
+        <li>Worst case O(|F| · k² · n²) — polynomial, and instant for classroom-sized schemas.</li>
+        <li>Attribute closure is O(|F| · n) per call.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Where it is used</h3>
+      <ul>
+        <li>Normalization to BCNF, which guarantees losslessness but may lose dependencies.</li>
+        <li>3NF synthesis, which preserves dependencies and adds a key fragment for losslessness.</li>
+        <li>Vertical partitioning and sharding in warehouses, where a bad split silently invents rows.</li>
+        <li>Data-warehouse star schemas and view design, checking a reconstructed fact table is exact.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Limitations</h3>
+      <ul>
+        <li>Holds only for the FDs you supply — a missing FD can make a lossless decomposition look lossy.</li>
+        <li>Lossless ≠ dependency-preserving; both must be checked, and BCNF cannot always give both.</li>
+        <li>This chase covers FDs. With multivalued dependencies the same tableau needs the MVD chase rule (4NF).</li>
+        <li>Says nothing about performance, redundancy or null handling — outer joins break the guarantee.</li>
+      </ul>
+    </div>
+  </div>
+</details>
+
+<script>
+"use strict";
+/* ============================================================
+   Lossless Join Checker — parsing, chase, closure, rendering
+   ============================================================ */
+
+const $ = id => document.getElementById(id);
+const el = (t, c, txt) => { const e = document.createElement(t); if (c) e.className = c; if (txt != null) e.textContent = txt; return e; };
+
+/* ---------- theme ---------- */
+(function theme(){
+  const saved = (()=>{ try { return localStorage.getItem("ljc.theme"); } catch(e){ return null; } })();
+  if (saved) document.documentElement.setAttribute("data-theme", saved);
+  const btn = $("themeBtn");
+  const sync = () => {
+    const dark = document.documentElement.getAttribute("data-theme") === "dark"
+      || (!document.documentElement.hasAttribute("data-theme") && matchMedia("(prefers-color-scheme: dark)").matches);
+    btn.textContent = dark ? "Light mode" : "Dark mode";
+    btn.setAttribute("aria-pressed", String(dark));
+  };
+  btn.onclick = () => {
+    const dark = btn.getAttribute("aria-pressed") === "true";
+    const next = dark ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem("ljc.theme", next); } catch(e){}
+    sync();
+  };
+  sync();
+})();
+
+/* ---------- examples ---------- */
+const EXAMPLES = [
+  { name: "1 · Lossy split of R(A,B,C)",
+    attrs: "A, B, C", fds: "A -> B", subs: "R1: A, B\nR2: B, C",
+    expect: "Lossy — the shared attribute B determines neither side." },
+  { name: "2 · Lossless split of R(A,B,C)",
+    attrs: "A, B, C", fds: "A -> B\nB -> C", subs: "R1: A, B\nR2: B, C",
+    expect: "Lossless — B is a key of R2, so B → C repairs row R1." },
+  { name: "3 · Five-way chase (Ullman)",
+    attrs: "A, B, C, D, E", fds: "A -> C\nB -> C\nC -> D\nDE -> C\nCE -> A", subs: "R1: A, D\nR2: A, B\nR3: B, E\nR4: C, D, E\nR5: A, E",
+    expect: "Lossless — needs several chase passes before a full a-row appears." },
+  { name: "4 · Student / Course / Instructor",
+    attrs: "SID, Course, Instructor", fds: "SID, Course -> Instructor\nInstructor -> Course", subs: "R1: Instructor, Course\nR2: SID, Instructor",
+    expect: "Lossless — the classic BCNF decomposition; Instructor is a key of R1." },
+  { name: "5 · Disjoint fragments (validation demo)",
+    attrs: "A, B, C, D", fds: "A -> B", subs: "R1: A, B\nR2: C, D",
+    expect: "Lossy — no common attribute, so the join is a Cartesian product." },
+  { name: "6 · Employee / Project / Budget",
+    attrs: "EmpID, Dept, Project, Budget", fds: "EmpID -> Dept\nProject -> Budget", subs: "R1: EmpID, Dept\nR2: EmpID, Project\nR3: Project, Budget",
+    expect: "Lossless — R2 collects a-symbols from both FDs." },
+  { name: "7 · Missing FD makes it lossy",
+    attrs: "A, B, C, D", fds: "A -> B\nC -> D", subs: "R1: A, B\nR2: C, D\nR3: B, C",
+    expect: "Lossy — nothing ties A to C, so rows recombine wrongly." },
+  { name: "8 · Trivial decomposition (R is a fragment)",
+    attrs: "A, B, C", fds: "", subs: "R1: A, B, C\nR2: A, B",
+    expect: "Lossless immediately — a row already contains every a-symbol." },
+  { name: "9 · No FDs with an overlap",
+    attrs: "A, B, C", fds: "", subs: "R1: A, B\nR2: B, C",
+    expect: "Lossy — an overlap alone is not enough without a dependency." },
+  { name: "10 · Binary lossless via common key",
+    attrs: "A, B, C", fds: "A -> B\nA -> C", subs: "R1: A, B\nR2: A, C",
+    expect: "Lossless — the common attribute A determines both sides." },
+  { name: "11 · Binary lossless on one side only",
+    attrs: "A, B, C, D", fds: "B -> C", subs: "R1: B, C\nR2: B, D",
+    expect: "Lossless — the common B is a key of R1, so the binary rule succeeds." },
+  { name: "12 · Three-way lossless dependency chain",
+    attrs: "A, B, C, D", fds: "A -> B\nB -> C\nC -> D", subs: "R1: A, B\nR2: B, C\nR3: C, D",
+    expect: "Lossless — repeated chase applications carry a-symbols across the chain." },
+  { name: "13 · Three-way disconnected chain",
+    attrs: "A, B, C, D", fds: "A -> B\nC -> D", subs: "R1: A, B\nR2: B, C\nR3: C, D",
+    expect: "Lossy — the dependency graph does not connect the A/B and C/D ends." },
+  { name: "14 · Cyclic dependencies",
+    attrs: "A, B, C", fds: "A -> B\nB -> C\nC -> A", subs: "R1: A, B\nR2: B, C\nR3: C, A",
+    expect: "Lossless — the cycle propagates distinguished values around all fragments." },
+  { name: "15 · Multi-attribute determinant",
+    attrs: "A, B, C, D", fds: "A, B -> C", subs: "R1: A, B, C\nR2: A, B, D",
+    expect: "Lossless — the shared determinant AB determines the first fragment." },
+  { name: "16 · Redundant fragment",
+    attrs: "A, B, C", fds: "A -> B\nB -> C", subs: "R1: A, B\nR2: B, C\nR3: A, B, C",
+    expect: "Lossless immediately — the redundant full fragment is already a witness." },
+  { name: "17 · Attribute not covered (warning)",
+    attrs: "A, B, C", fds: "A -> B", subs: "R1: A, B\nR2: A",
+    expect: "Warning and lossy — C appears in no fragment, so R cannot be rebuilt." },
+  { name: "18 · Unknown attribute (validation error)",
+    attrs: "A, B", fds: "A -> C", subs: "R1: A\nR2: B",
+    expect: "Invalid input — the FD uses C, which is not in the original relation." },
+  { name: "19 · Malformed dependency (validation error)",
+    attrs: "A, B, C", fds: "A - B", subs: "R1: A, B\nR2: B, C",
+    expect: "Invalid input — every dependency needs exactly one -> or → arrow." },
+  { name: "20 · Duplicate attributes (normalization warning)",
+    attrs: "A, A, B, C", fds: "A -> B", subs: "R1: A, B\nR2: A, C",
+    expect: "Warning — duplicate attribute names are ignored before the chase." },
+  { name: "21 · Unicode arrow and compact FD",
+    attrs: "A, B, C", fds: "A → B\nBC -> C", subs: "R1: A, B\nR2: B, C",
+    expect: "Valid parser case — Unicode arrows and compact single-letter sides are accepted." }
+];
+(function fillExamples(){
+  const sel = $("exSel");
+  sel.appendChild(new Option("Choose an example…", ""));
+  EXAMPLES.forEach((e,i)=> sel.appendChild(new Option(e.name, String(i))));
+  sel.onchange = () => {
+    const i = sel.value; if (i === "") return;
+    const e = EXAMPLES[+i];
+    $("attrs").value = e.attrs; $("fds").value = e.fds; $("subs").value = e.subs;
+    run();
+  };
+})();
+
+/* ---------- parsing & validation ---------- */
+function splitList(s){ return s.split(/[,\s]+/).map(x=>x.trim()).filter(Boolean); }
+
+function expandSide(tokens, attrSet){
+  // "DE" with single-letter attributes D,E expands to [D,E]; multi-char names are kept as-is.
+  const out = [];
+  for (const t of tokens){
+    if (attrSet.has(t)) { out.push(t); continue; }
+    const chars = t.split("");
+    if (chars.length > 1 && chars.every(c => attrSet.has(c))) out.push(...chars);
+    else out.push(t);
+  }
+  return [...new Set(out)];
+}
+
+function parseInput(){
+  const errors = [], warnings = [];
+  const attrs = splitList($("attrs").value);
+  if (!attrs.length) errors.push("Relation R has no attributes. List them like: A, B, C, D");
+  const dup = attrs.filter((a,i)=>attrs.indexOf(a)!==i);
+  if (dup.length) warnings.push("Duplicate attribute names ignored: " + [...new Set(dup)].join(", "));
+  const attrList = [...new Set(attrs)];
+  const attrSet = new Set(attrList);
+
+  const fds = [];
+  $("fds").value.split(/\n+/).forEach((line, n) => {
+    const raw = line.trim(); if (!raw) return;
+    const parts = raw.split(/->|→|\u2192/);
+    if (parts.length !== 2) { errors.push('FD line ' + (n+1) + ' needs exactly one arrow: "' + raw + '"'); return; }
+    const lhs = expandSide(splitList(parts[0]), attrSet);
+    const rhs = expandSide(splitList(parts[1]), attrSet);
+    if (!lhs.length || !rhs.length) { errors.push('FD line ' + (n+1) + " has an empty side."); return; }
+    const unknown = [...lhs, ...rhs].filter(a => !attrSet.has(a));
+    if (unknown.length) { errors.push('FD line ' + (n+1) + " uses attributes not in R: " + [...new Set(unknown)].join(", ")); return; }
+    fds.push({ lhs, rhs, text: lhs.join("") + " → " + rhs.join("") });
+  });
+  if (!fds.length) warnings.push("No functional dependencies given. Without FDs only a fragment equal to R can be lossless.");
+
+  const subs = [];
+  $("subs").value.split(/\n+/).forEach((line, n) => {
+    const raw = line.trim(); if (!raw) return;
+    let name = "R" + (subs.length + 1), body = raw;
+    const m = raw.match(/^([A-Za-z_][\w]*)\s*[:=(]\s*(.*?)\)?$/);
+    if (m && /[,\s]/.test(m[2])) { name = m[1]; body = m[2]; }
+    else if (m && m[2]) { name = m[1]; body = m[2]; }
+    const list = expandSide(splitList(body), attrSet);
+    const unknown = list.filter(a => !attrSet.has(a));
+    if (unknown.length) { errors.push('Decomposition line ' + (n+1) + " uses attributes not in R: " + [...new Set(unknown)].join(", ")); return; }
+    if (!list.length) { errors.push('Decomposition line ' + (n+1) + " has no attributes."); return; }
+    subs.push({ name, attrs: [...new Set(list)] });
+  });
+  if (subs.length < 2) errors.push("Give at least two sub-relations to decompose R into.");
+
+  const covered = new Set(subs.flatMap(s => s.attrs));
+  const missing = attrList.filter(a => !covered.has(a));
+  if (missing.length) warnings.push("These attributes appear in no fragment, so R can never be rebuilt: " + missing.join(", "));
+
+  return { attrs: attrList, fds, subs, errors, warnings, missing };
+}
+
+/* ---------- attribute closure ---------- */
+function closure(seed, fds){
+  const cl = new Set(seed);
+  let changed = true;
+  while (changed){
+    changed = false;
+    for (const f of fds){
+      if (f.lhs.every(a => cl.has(a)) && f.rhs.some(a => !cl.has(a))){
+        f.rhs.forEach(a => cl.add(a)); changed = true;
+      }
+    }
+  }
+  return cl;
+}
+
+/* ---------- the chase ---------- */
+const key = c => c.t === "a" ? "a" + c.j : "b" + c.i + "_" + c.j;
+const label = c => c.t === "a" ? ["a", String(c.j + 1)] : ["b", String(c.i + 1) + String(c.j + 1)];
+const cloneT = T => T.map(r => r.map(c => ({ ...c })));
+
+function chase(attrs, fds, subs){
+  const n = attrs.length, idx = {}; attrs.forEach((a,j)=> idx[a]=j);
+  let T = subs.map((s,i)=> attrs.map((a,j)=> s.attrs.includes(a) ? {t:"a",j} : {t:"b",i,j}));
+  const steps = [];
+  const fullRow = () => T.findIndex(r => r.every(c => c.t === "a"));
+
+  steps.push({
+    tableau: cloneT(T), changed: [], lhsCells: [],
+    title: "Build the tableau",
+    text: "One row per fragment, one column per attribute. Row " + subs[0].name + " gets a-symbols in the columns it contains and b-symbols everywhere else. A row of pure a-symbols would mean that fragment can reconstruct a whole tuple of R."
+  });
+
+  let win = fullRow();
+  if (win >= 0){
+    steps.push({ tableau: cloneT(T), changed: [], lhsCells: [], winRow: win,
+      title: "Already complete", text: "Row " + subs[win].name + " contains every attribute of R, so the decomposition is lossless before any FD is applied." });
+    return { steps, lossless: true, winRow: win, passes: 0, tableau: T };
+  }
+
+  let changed = true, pass = 0;
+  while (changed && pass < 60){
+    changed = false; pass++;
+    for (const f of fds){
+      const groups = new Map();
+      for (let i = 0; i < T.length; i++){
+        const k = f.lhs.map(a => key(T[i][idx[a]])).join("|");
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k).push(i);
+      }
+      for (const rows of groups.values()){
+        if (rows.length < 2) continue;
+        for (const a of f.rhs){
+          const c = idx[a];
+          const vals = rows.map(i => T[i][c]);
+          const uniq = new Set(vals.map(key));
+          if (uniq.size <= 1) continue;
+          let target = vals.find(v => v.t === "a");
+          if (!target) target = vals.reduce((m,v)=> v.i < m.i ? v : m);
+          const touched = [];
+          rows.forEach(i => { if (key(T[i][c]) !== key(target)) { T[i][c] = { ...target }; touched.push([i,c]); } });
+          if (!touched.length) continue;
+          changed = true;
+          const names = rows.map(i => subs[i].name).join(", ");
+          const tl = label(target);
+          steps.push({
+            tableau: cloneT(T), changed: touched,
+            lhsCells: rows.flatMap(i => f.lhs.map(x => [i, idx[x]])),
+            title: "Apply " + f.text,
+            text: "Rows " + names + " agree on " + f.lhs.join("") + ", so " + f.text.split(" → ")[0] + " → " + a +
+                  " forces their " + a + " values to be equal. They all become " + tl[0] + tl[1] + "." +
+                  (target.t === "a" ? " An a-symbol always wins, because it is the real value of column " + a + "." : " No a-symbol was present, so the lowest-numbered b-symbol is kept.")
+          });
+          win = fullRow();
+          if (win >= 0){
+            steps.push({ tableau: cloneT(T), changed: [], lhsCells: [], winRow: win,
+              title: "Row " + subs[win].name + " is all a-symbols",
+              text: "Every column of row " + subs[win].name + " now holds an a-symbol, so joining the fragments can only produce original tuples of R. The decomposition is lossless and the chase stops." });
+            return { steps, lossless: true, winRow: win, passes: pass, tableau: T };
+          }
+        }
+      }
+    }
+  }
+
+  steps.push({ tableau: cloneT(T), changed: [], lhsCells: [],
+    title: "No more changes possible",
+    text: "The chase reached a fixed point after " + pass + " pass" + (pass === 1 ? "" : "es") + " and no row is made only of a-symbols. The FDs are not strong enough to tie the fragments back together, so the join produces spurious tuples: the decomposition is lossy." });
+  return { steps, lossless: false, winRow: -1, passes: pass, tableau: T };
+}
+
+/* ---------- dependency preservation ---------- */
+function dependencyPreserved(fds, subs){
+  const results = fds.map(f => {
+    let Z = new Set(f.lhs), changed = true;
+    while (changed){
+      changed = false;
+      for (const s of subs){
+        const inter = [...Z].filter(a => s.attrs.includes(a));
+        const cl = closure(inter, fds);
+        for (const a of s.attrs) if (cl.has(a) && !Z.has(a)) { Z.add(a); changed = true; }
+      }
+    }
+    const ok = f.rhs.every(a => Z.has(a));
+    return { fd: f.text, ok, closure: [...Z] };
+  });
+  return { results, all: results.every(r => r.ok) };
+}
+
+/* ---------- rendering ---------- */
+let STATE = { parsed: null, res: null, i: 0, timer: null };
+
+function renderTableau(step, parsed){
+  const { attrs, subs } = parsed;
+  const wrap = el("div");
+  const t = el("table", "tableau");
+  const thead = el("thead"), hr = el("tr");
+  hr.appendChild(el("th", "rowhead", "fragment"));
+  attrs.forEach(a => hr.appendChild(el("th", null, a)));
+  thead.appendChild(hr); t.appendChild(thead);
+  const tb = el("tbody");
+  const ch = new Set((step.changed || []).map(p => p[0] + ":" + p[1]));
+  const lh = new Set((step.lhsCells || []).map(p => p[0] + ":" + p[1]));
+  step.tableau.forEach((row, i) => {
+    const tr = el("tr");
+    if (step.winRow === i) tr.className = "row-win";
+    const th = el("th", "rowhead", subs[i].name + " (" + subs[i].attrs.join("") + ")");
+    tr.appendChild(th);
+    row.forEach((c, j) => {
+      const td = el("td", c.t === "a" ? "cell-a" : "cell-b");
+      const L = label(c);
+      td.appendChild(document.createTextNode(L[0]));
+      const sub = el("sub", null, L[1]); td.appendChild(sub);
+      const k = i + ":" + j;
+      if (ch.has(k)) td.classList.add("cell-changed");
+      if (lh.has(k) && !ch.has(k)) td.classList.add("cell-lhs");
+      td.setAttribute("aria-label", subs[i].name + " " + attrs[j] + " = " + L[0] + L[1]);
+      tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb); wrap.appendChild(t);
+  $("tableau").replaceChildren(wrap);
+}
+
+function showStep(i){
+  const { res, parsed } = STATE;
+  if (!res) return;
+  STATE.i = Math.max(0, Math.min(i, res.steps.length - 1));
+  const s = res.steps[STATE.i];
+  renderTableau(s, parsed);
+  const card = $("stepCard");
+  card.replaceChildren();
+  card.appendChild(el("div", "k", "Step " + (STATE.i + 1) + " of " + res.steps.length));
+  card.appendChild(el("div", null, s.title));
+  const p = el("p", null, s.text); p.style.margin = "6px 0 0"; p.style.color = "var(--ink-soft)"; p.style.fontSize = "13.5px";
+  card.appendChild(p);
+  $("stepCount").textContent = (STATE.i + 1) + " / " + res.steps.length;
+  $("progFill").style.width = ((STATE.i + 1) / res.steps.length * 100) + "%";
+  [...$("log").children].forEach((b, n) => b.setAttribute("aria-current", String(n === STATE.i)));
+  const cur = $("log").children[STATE.i];
+  if (cur) cur.scrollIntoView({ block: "nearest" });
+  $("prevBtn").disabled = STATE.i === 0;
+  $("nextBtn").disabled = STATE.i === res.steps.length - 1;
+}
+
+function renderLog(res){
+  const log = $("log"); log.replaceChildren();
+  res.steps.forEach((s, n) => {
+    const b = el("button", null, (n + 1) + ". " + s.title);
+    b.onclick = () => { stop(); showStep(n); };
+    log.appendChild(b);
+  });
+}
+
+function renderMsgs(errors, warnings, extra){
+  const ul = $("msgs"); ul.replaceChildren();
+  errors.forEach(m => ul.appendChild(el("li", "err", m)));
+  warnings.forEach(m => ul.appendChild(el("li", "warn", m)));
+  (extra || []).forEach(m => ul.appendChild(el("li", "ok", m)));
+}
+
+function renderBinary(parsed){
+  const out = $("binaryOut"); out.replaceChildren();
+  const { subs, fds, attrs } = parsed;
+  if (subs.length === 2){
+    const [a, b] = subs;
+    const inter = a.attrs.filter(x => b.attrs.includes(x));
+    const box = el("div", "step-card");
+    box.appendChild(el("h3", null, "Two fragments — the superkey rule applies"));
+    if (!inter.length){
+      box.appendChild(el("p", null, "The fragments share no attributes, so the join is a Cartesian product. Any decomposition like this is lossy."));
+    } else {
+      const cl = closure(inter, fds);
+      const c1 = a.attrs.every(x => cl.has(x)), c2 = b.attrs.every(x => cl.has(x));
+      box.appendChild(el("p", null, "Common attributes: " + inter.join(", ")));
+      box.appendChild(el("p", null, "Closure (" + inter.join("") + ")⁺ = { " + [...cl].join(", ") + " }"));
+      const d1 = el("div", "kv"); d1.append(el("span", null, inter.join("") + " → " + a.name), el("strong", null, c1 ? "holds" : "does not hold")); box.appendChild(d1);
+      const d2 = el("div", "kv"); d2.append(el("span", null, inter.join("") + " → " + b.name), el("strong", null, c2 ? "holds" : "does not hold")); box.appendChild(d2);
+      const verdict = el("p", null, (c1 || c2)
+        ? "At least one side is determined by the shared attributes, so the decomposition is lossless — the same answer the chase gives."
+        : "Neither side is determined by the shared attributes, so the decomposition is lossy.");
+      verdict.style.fontWeight = "600"; box.appendChild(verdict);
+    }
+    out.appendChild(box);
+  } else {
+    const box = el("div", "step-card");
+    box.appendChild(el("h3", null, "More than two fragments"));
+    box.appendChild(el("p", null, "The superkey shortcut only decides binary decompositions. With " + subs.length + " fragments the chase on the Chase tableau tab is the test to use. The closures below are still useful for spotting keys."));
+    out.appendChild(box);
+  }
+  const cbox = el("div", "step-card");
+  cbox.appendChild(el("h3", null, "Attribute closures"));
+  cbox.appendChild(el("p", null, "Closure of each fragment's attribute set under the given FDs. A fragment whose closure is all of R holds a key of R."));
+  subs.forEach(s => {
+    const cl = closure(s.attrs, fds);
+    const isKey = attrs.every(x => cl.has(x));
+    const row = el("div", "kv");
+    row.append(el("span", null, s.name + " (" + s.attrs.join("") + ")⁺ = { " + [...cl].join(", ") + " }"),
+               el("strong", null, isKey ? "superkey of R" : "not a superkey"));
+    cbox.appendChild(row);
+  });
+  out.appendChild(cbox);
+}
+
+function renderDep(parsed){
+  const out = $("depOut"); out.replaceChildren();
+  const d = dependencyPreserved(parsed.fds, parsed.subs);
+  const box = el("div", "step-card");
+  box.appendChild(el("h3", null, d.all ? "All dependencies are preserved" : "Some dependencies are lost"));
+  box.appendChild(el("p", null, "A decomposition preserves a dependency X→Y when X→Y can be enforced on the fragments alone, without joining them. Losslessness and dependency preservation are independent properties — a decomposition can have one without the other."));
+  d.results.forEach(r => {
+    const row = el("div", "kv");
+    row.append(el("span", null, r.fd), el("strong", null, r.ok ? "preserved" : "not preserved"));
+    box.appendChild(row);
+  });
+  if (!parsed.fds.length) box.appendChild(el("p", null, "No FDs were given, so there is nothing to preserve."));
+  out.appendChild(box);
+}
+
+function setVerdict(kind, head, why){
+  const v = $("verdict");
+  v.className = "verdict " + kind;
+  v.replaceChildren(el("strong", null, head), el("span", "why", why));
+}
+
+/* ---------- playback ---------- */
+function stop(){ if (STATE.timer){ clearInterval(STATE.timer); STATE.timer = null; } $("playBtn").textContent = "▶ Play"; }
+function play(){
+  if (!STATE.res) return;
+  if (STATE.timer){ stop(); return; }
+  if (STATE.i >= STATE.res.steps.length - 1) STATE.i = -1;
+  $("playBtn").textContent = "❚❚ Pause";
+  STATE.timer = setInterval(() => {
+    if (STATE.i >= STATE.res.steps.length - 1){ stop(); return; }
+    showStep(STATE.i + 1);
+  }, +$("speed").value);
+}
+
+/* ---------- history ---------- */
+const HKEY = "ljc.history";
+function loadHistory(){ try { return JSON.parse(localStorage.getItem(HKEY) || "[]"); } catch(e){ return []; } }
+function saveHistory(list){ try { localStorage.setItem(HKEY, JSON.stringify(list.slice(0, 8))); } catch(e){} }
+function pushHistory(entry){
+  const list = loadHistory().filter(h => h.sig !== entry.sig);
+  list.unshift(entry); saveHistory(list); renderHistory();
+}
+function renderHistory(){
+  const list = loadHistory(), box = $("hist");
+  box.replaceChildren();
+  if (!list.length){ box.appendChild(el("p", "smallnote", "Runs you make are listed here so you can reload them.")); return; }
+  list.forEach(h => {
+    const b = el("button");
+    b.append(el("div", null, (h.lossless ? "✓ Lossless" : "✗ Lossy") + " · " + h.attrs),
+             el("div", "smallnote", h.subsShort + " · " + h.when));
+    b.onclick = () => { $("attrs").value = h.a; $("fds").value = h.f; $("subs").value = h.s; run(); };
+    box.appendChild(b);
+  });
+  const clear = el("button", "btn tiny", "Clear history");
+  clear.onclick = () => { try { localStorage.removeItem(HKEY); } catch(e){} renderHistory(); };
+  box.appendChild(clear);
+}
+renderHistory();
+
+/* ---------- report ---------- */
+function buildReport(){
+  const { parsed, res } = STATE;
+  if (!parsed || !res) return "No check has been run yet.";
+  const L = [];
+  L.push("# Lossless Join Check Report", "", "Generated " + new Date().toLocaleString(), "");
+  L.push("## Input", "", "- Relation R(" + parsed.attrs.join(", ") + ")");
+  L.push("- Functional dependencies:");
+  parsed.fds.forEach(f => L.push("  - " + f.text));
+  if (!parsed.fds.length) L.push("  - (none)");
+  L.push("- Decomposition:");
+  parsed.subs.forEach(s => L.push("  - " + s.name + "(" + s.attrs.join(", ") + ")"));
+  L.push("", "## Verdict", "", res.lossless
+    ? "**Lossless join.** Row " + parsed.subs[res.winRow].name + " became all a-symbols after " + res.passes + " chase pass(es)."
+    : "**Lossy join.** The chase reached a fixed point after " + res.passes + " pass(es) with no all-a row, so the natural join produces spurious tuples.");
+  L.push("", "## Chase steps", "");
+  res.steps.forEach((s, i) => {
+    L.push("### Step " + (i + 1) + " — " + s.title, "", s.text, "", "```");
+    L.push(["fragment", ...parsed.attrs].join("\t"));
+    s.tableau.forEach((row, r) => {
+      const lab = label;
+      L.push([parsed.subs[r].name, ...row.map(c => lab(c).join(""))].join("\t"));
+    });
+    L.push("```", "");
+  });
+  if (parsed.subs.length === 2){
+    const inter = parsed.subs[0].attrs.filter(x => parsed.subs[1].attrs.includes(x));
+    L.push("## Binary rule", "", "Common attributes: " + (inter.join(", ") || "(none)"));
+    if (inter.length) L.push("Closure: (" + inter.join("") + ")+ = { " + [...closure(inter, parsed.fds)].join(", ") + " }");
+    L.push("");
+  }
+  const d = dependencyPreserved(parsed.fds, parsed.subs);
+  L.push("## Dependency preservation", "");
+  d.results.forEach(r => L.push("- " + r.fd + " — " + (r.ok ? "preserved" : "NOT preserved")));
+  if (!d.results.length) L.push("- (no FDs given)");
+  L.push("", "## Method", "", "Chase (tableau) test for non-additive join, Module 3 — Relational Database Design.",
+    "Complexity: O(|F| · k^2 · n^2) worst case for k fragments and n attributes; attribute closure O(|F| · n).");
+  return L.join("\n");
+}
+
+$("copyBtn").onclick = async () => {
+  try { await navigator.clipboard.writeText(buildReport()); $("exportNote").textContent = "Report copied to the clipboard."; }
+  catch(e){ $("exportNote").textContent = "Copying was blocked by the browser. Use Download report instead."; }
+};
+
+let downloads = null;
+$("exportBtn").onclick = async () => {
+  if (!STATE.res){ $("exportNote").textContent = "Run a check first — there is nothing to export yet."; return; }
+  const data = buildReport();
+  if (downloads){
+    try {
+      await downloads.save({ filename: "lossless-join-report.md", data });
+      $("exportNote").textContent = "Report saved.";
+    } catch (e){
+      $("exportNote").textContent = e && e.code === "declined" ? "Download cancelled." : "Download unavailable here — use Copy instead.";
+    }
+    return;
+  }
+  // Standalone / local file: save straight from the browser.
+  try {
+    const blob = new Blob([data], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "lossless-join-report.md";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    $("exportNote").textContent = "Report saved as lossless-join-report.md.";
+  } catch (e){
+    try { await navigator.clipboard.writeText(data); $("exportNote").textContent = "Saving was blocked, so the report was copied to your clipboard instead."; }
+    catch(e2){ $("exportNote").textContent = "Saving was blocked by the browser. Use Copy to take the report."; }
+  }
+};
+
+/* ---------- run ---------- */
+function run(){
+  stop();
+  const parsed = parseInput();
+  const extra = [];
+  renderMsgs(parsed.errors, parsed.warnings, extra);
+  if (parsed.errors.length){
+    setVerdict("idle", "Fix the input", "Correct the messages above, then check again.");
+    $("tableau").replaceChildren(el("p", "smallnote", "Nothing to show until the input is valid."));
+    $("log").replaceChildren(); $("stepCount").textContent = "0 / 0"; $("progFill").style.width = "0";
+    STATE.res = null; return;
+  }
+  const res = chase(parsed.attrs, parsed.fds, parsed.subs);
+  STATE.parsed = parsed; STATE.res = res; STATE.i = 0;
+  renderLog(res);
+  showStep(0);
+  renderBinary(parsed);
+  renderDep(parsed);
+
+  const names = parsed.subs.map(s => s.name + "(" + s.attrs.join("") + ")").join(" ⋈ ");
+  setVerdict(res.lossless ? "good" : "bad",
+    res.lossless ? "Lossless join" : "Lossy join",
+    res.lossless
+      ? names + " rebuilds R exactly. Row " + parsed.subs[res.winRow].name + " reached all a-symbols in " + res.passes + " pass" + (res.passes === 1 ? "" : "es") + "."
+      : names + " produces spurious tuples. The chase stopped after " + res.passes + " pass" + (res.passes === 1 ? "" : "es") + " with no all-a row.");
+
+  pushHistory({
+    sig: parsed.attrs.join() + "|" + parsed.fds.map(f=>f.text).join() + "|" + parsed.subs.map(s=>s.attrs.join("")).join(),
+    a: $("attrs").value, f: $("fds").value, s: $("subs").value,
+    attrs: "R(" + parsed.attrs.join(",") + ")",
+    subsShort: parsed.subs.map(s => s.attrs.join("")).join(" | "),
+    lossless: res.lossless,
+    when: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  });
+  $("aiOut").classList.add("hidden");
+}
+
+$("runBtn").onclick = run;
+$("clearBtn").onclick = () => { $("attrs").value = ""; $("fds").value = ""; $("subs").value = ""; $("exSel").value = ""; renderMsgs([], [], []); setVerdict("idle", "Ready", "Enter a schema and press “Check decomposition”."); STATE.res = null; $("tableau").replaceChildren(); $("log").replaceChildren(); };
+$("nextBtn").onclick = () => { stop(); showStep(STATE.i + 1); };
+$("prevBtn").onclick = () => { stop(); showStep(STATE.i - 1); };
+$("firstBtn").onclick = () => { stop(); showStep(0); };
+$("lastBtn").onclick = () => { stop(); showStep(STATE.res ? STATE.res.steps.length - 1 : 0); };
+$("playBtn").onclick = play;
+document.addEventListener("keydown", e => {
+  if (/input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key === "ArrowRight"){ stop(); showStep(STATE.i + 1); }
+  if (e.key === "ArrowLeft"){ stop(); showStep(STATE.i - 1); }
+  if (e.key === " " && STATE.res){ e.preventDefault(); play(); }
+});
+document.querySelectorAll(".tabs button").forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll(".tabs button").forEach(x => x.setAttribute("aria-selected", String(x === b)));
+    ["chase","binary","dep"].forEach(t => $("tab-" + t).classList.toggle("hidden", t !== b.dataset.tab));
+  };
+});
+
+/* ---------- AI tutor (optional capability) ---------- */
+let sample = null, aborter = null;
+(async () => {
+  if (!window.claude || !claude.use) return;
+  try { downloads = await claude.use("downloads"); } catch(e){}
+  try { sample = await claude.use("sample"); } catch(e){}
+  if (sample) $("aiWrap").classList.remove("hidden");
+})();
+
+function contextPrompt(question){
+  const p = STATE.parsed, r = STATE.res;
+  if (!p || !r) return question || "Explain the chase test for lossless join decomposition to a student.";
+  return [
+    "You are tutoring a database student on lossless-join decomposition. Be concrete and brief (under 180 words), plain sentences, no headings.",
+    "Relation: R(" + p.attrs.join(", ") + ")",
+    "FDs: " + (p.fds.map(f => f.text).join("; ") || "none"),
+    "Decomposition: " + p.subs.map(s => s.name + "(" + s.attrs.join(",") + ")").join(", "),
+    "Chase result: " + (r.lossless ? "LOSSLESS, row " + p.subs[r.winRow].name + " became all a-symbols" : "LOSSY, fixed point with no all-a row"),
+    "Steps taken: " + r.steps.map(s => s.title).join(" | "),
+    question ? ("Student question: " + question) : "Explain why this result happened, and what would have to change to flip it."
+  ].join("\n");
+}
+
+async function ask(question){
+  if (!sample) return;
+  const out = $("aiOut");
+  out.classList.remove("hidden"); out.textContent = "Thinking…";
+  $("aiStop").disabled = false;
+  aborter = new AbortController();
+  try {
+    await sample(contextPrompt(question), {
+      modelTier: "quick",
+      signal: aborter.signal,
+      onText: ({ text }) => { out.textContent = text; }
+    });
+  } catch (e){
+    if (e && e.text) out.textContent = e.text;
+    else if (e && e.code === "cancelled") out.textContent += "\n\n(stopped)";
+    else if (e && e.code === "not_granted") { out.textContent = "The AI tutor needs your permission to run."; }
+    else if (e && e.code === "rate_limited") out.textContent = "Too many requests just now — try again in a moment.";
+    else out.textContent = "The tutor could not answer this time.";
+  } finally { $("aiStop").disabled = true; aborter = null; }
+}
+$("aiExplain").onclick = () => ask(null);
+$("aiStop").onclick = () => { if (aborter) aborter.abort(); };
+$("aiAsk").onkeydown = e => { if (e.key === "Enter" && e.target.value.trim()){ ask(e.target.value.trim()); e.target.value = ""; } };
+
+/* first paint */
+run();
+</script>
+</body>
+</html>

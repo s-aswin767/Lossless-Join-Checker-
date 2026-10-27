@@ -1,0 +1,18 @@
+import { BookOpen, Boxes, CircleHelp, Gauge, Globe2, GitBranch, ShieldCheck } from "lucide-react";
+import AppShell from "@/components/AppShell";
+
+export default function Learn() {
+  return <AppShell><main className="page">
+    <div className="page-heading"><div><div className="eyebrow">Field notes / module 03</div><h1>Understand the instrument.</h1><p className="lede">Lossless join decomposition is not a yes/no trick. It is a compact proof that your tables still carry enough shared structure to reconstruct the original relation.</p></div></div>
+    <div className="subpage-grid">
+      <section>
+        <div className="info-card"><div className="icon-wrap"><BookOpen size={18} /></div><h2>What “lossless” means</h2><p>A decomposition of a relation R into R₁, R₂, …, Rₙ is lossless if joining the decomposed relations always gives exactly the original relation. No valid facts disappear, and no spurious tuples appear.</p><div className="definition-list"><div className="definition"><strong>Decomposition</strong><p>Split one wide relation into smaller relations to reduce redundancy and update anomalies.</p></div><div className="definition"><strong>Functional dependency</strong><p>X → Y means that equal X values force equal Y values. The determinant X identifies the dependent attributes Y.</p></div><div className="definition"><strong>Distinguished symbol</strong><p>In the tableau, an <span className="mono">a</span>-symbol marks an attribute value preserved by a relation row. A <span className="mono">b</span>-symbol is a fresh unknown.</p></div></div></div>
+        <div className="info-card" style={{ marginTop: 14 }}><div className="icon-wrap"><GitBranch size={18} /></div><h2>Why this algorithm?</h2><p>The tableau or chase test simulates how dependencies force values to agree across decomposed rows. Each dependency application is a small proof step; a fully distinguished row is a constructive witness for losslessness.</p><div className="example-code">1. Create one tableau row per decomposed relation{`\n`}2. Mark preserved attributes with distinguished symbols{`\n`}3. Repeatedly apply X → Y when rows agree on X{`\n`}4. Stop when a full row is distinguished or no change remains</div></div>
+      </section>
+      <aside>
+        <div className="callout"><div className="eyebrow" style={{ color: "var(--cyan)" }}>Complexity</div><h2 style={{ marginTop: 10, color: "white" }}>Predictable, bounded, explainable.</h2><p>For this teaching simulator, the work is O(i × f × r × a): iterations × dependencies × rows × attributes. Real-world optimizations can reduce repeated comparisons, but the bounded form keeps each UI step easy to inspect.</p></div>
+        <div className="card-grid" style={{ marginTop: 14 }}><div className="info-card"><div className="icon-wrap"><Globe2 size={17} /></div><h3>Real-world use</h3><p>Schema design, normalization reviews, migration planning, and data warehouse modeling.</p></div><div className="info-card"><div className="icon-wrap"><ShieldCheck size={17} /></div><h3>What it protects</h3><p>It catches decompositions that could create spurious combinations after a natural join.</p></div><div className="info-card"><div className="icon-wrap"><Gauge size={17} /></div><h3>Limitations</h3><p>The proof depends on the functional dependencies you provide; missing dependencies can make a sound design look uncertain.</p></div><div className="info-card"><div className="icon-wrap"><CircleHelp size={17} /></div><h3>Exam hint</h3><p>Look first at intersections between decomposed relations. If the intersection functionally determines one side, that split is often promising.</p></div></div>
+      </aside>
+    </div>
+  </main></AppShell>;
+}
